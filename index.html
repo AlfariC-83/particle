@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AMOLED Screen Test - Cosmic Dust Visualizer</title>
+    <!-- Tailwind CSS for modern HUD styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font and reset */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000; /* Pure Black for AMOLED test */
+            font-family: 'Inter', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+        }
+
+        /* Glassmorphism control panel styling */
+        .glass-panel {
+            background: rgba(10, 10, 12, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        /* Custom scrollbar for control panel */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            height: 6px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="relative text-white font-sans antialiased bg-black">
+
+    <!-- Main Canvas -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- Initial Prompt Overlay (Vanishes on First Click/Tap) -->
+    <div id="startOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-black bg-opacity-80 backdrop-blur-sm transition-opacity duration-500 pointer-events-auto cursor-pointer">
+        <div class="max-w-md text-center space-y-4">
+            <div class="inline-block p-4 rounded-full bg-white/5 border border-white/10 mb-2 animate-pulse">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-wider uppercase text-white">AMOLED Particle Visualizer</h1>
+            <p class="text-sm text-gray-400">Tekan di mana saja untuk mengaktifkan <span class="text-white font-semibold">Fullscreen Mode</span> &amp; mulai pengujian warna OLED.</p>
+            <div class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wider text-black bg-white rounded-full shadow-lg hover:bg-gray-200 transition">
+                <span>START EXPERIMENT</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- HUD Overlay Top Right (FPS & Controls Toggle) -->
+    <div class="fixed top-4 right-4 z-40 flex items-center gap-3">
+        <!-- Stats Badge -->
+        <div class="glass-panel px-3 py-1.5 rounded-xl text-xs font-mono flex items-center gap-3 shadow-2xl">
+            <div><span class="text-gray-400">FPS:</span> <span id="fpsVal" class="text-green-400 font-bold">60</span></div>
+            <div class="w-px h-3 bg-white/20"></div>
+            <div><span class="text-gray-400">PARTICLES:</span> <span id="countVal" class="text-cyan-400 font-bold">1200</span></div>
+        </div>
+        
+        <!-- Toggle Control Panel Button -->
+        <button id="togglePanelBtn" class="glass-panel p-2.5 rounded-xl hover:bg-white/10 active:scale-95 transition shadow-2xl" title="Toggle Controls">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Collapsible Controls Panel -->
+    <div id="controlPanel" class="fixed top-16 right-4 z-40 w-80 max-h-[calc(100vh-5rem)] glass-panel rounded-2xl p-5 shadow-2xl overflow-y-auto custom-scrollbar transition-all duration-300 transform scale-100 opacity-100">
+        <div class="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
+            <h2 class="text-sm font-bold tracking-widest uppercase text-white">Display &amp; Physics Config</h2>
+            <button id="fullscreenToggleBtn" class="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded-md transition" title="Toggle Fullscreen">Fullscreen</button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+            <!-- Interaction Mode -->
+            <div>
+                <label class="block font-medium text-gray-300 mb-1.5">Mode Interaksi Sentuh/Mouse</label>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button data-mode="attract" class="mode-btn px-3 py-2 rounded-lg bg-white text-black font-semibold transition text-center">Attract (Gravity)</button>
+                    <button data-mode="repel" class="mode-btn px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition text-center">Repel (Push)</button>
+                    <button data-mode="vortex" class="mode-btn px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition text-center">Swirl (Vortex)</button>
+                    <button data-mode="explode" class="mode-btn px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition text-center">Explosion Wave</button>
+                </div>
+            </div>
+
+            <!-- Color Palette Mode -->
+            <div>
+                <label class="block font-medium text-gray-300 mb-1.5">Tema Warna AMOLED</label>
+                <select id="colorModeSelect" class="w-full bg-black/60 border border-white/20 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-400 transition">
+                    <option value="spectrum">Neon Spectrum (Full RGB dynamic)</option>
+                    <option value="cyberpunk">Cyberpunk (Neon Magenta &amp; Cyan)</option>
+                    <option value="fire">AMOLED Flame (Orange, Red &amp; Gold)</option>
+                    <option value="deepspace">Deep Nebula (Violet, Blue &amp; White)</option>
+                    <option value="matrix">Matrix Glow (Lime &amp; Emerald)</option>
+                </select>
+            </div>
+
+            <!-- Particle Density Slider -->
+            <div>
+                <div class="flex justify-between mb-1">
+                    <label class="font-medium text-gray-300">Jumlah Partikel</label>
+                    <span id="particleCountLabel" class="text-gray-400 font-mono">1200</span>
+                </div>
+                <input id="particleCountInput" type="range" min="200" max="4000" step="100" value="1200" class="w-full">
+            </div>
+
+            <!-- Tail Length / Motion Blur Fade Slider -->
+            <div>
+                <div class="flex justify-between mb-1">
+                    <label class="font-medium text-gray-300">Panjang Ekor (Trail Blur)</label>
+                    <span id="tailLengthLabel" class="text-gray-400 font-mono">Medium</span>
+                </div>
+                <input id="tailLengthInput" type="range" min="0.03" max="0.3" step="0.01" value="0.12" class="w-full">
+            </div>
+
+            <!-- Speed Modifier Slider -->
+            <div>
+                <div class="flex justify-between mb-1">
+                    <label class="font-medium text-gray-300">Kecepatan Partikel</label>
+                    <span id="speedLabel" class="text-gray-400 font-mono">1.0x</span>
+                </div>
+                <input id="speedInput" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full">
+            </div>
+
+            <!-- Particle Size Slider -->
+            <div>
+                <div class="flex justify-between mb-1">
+                    <label class="font-medium text-gray-300">Ukuran Partikel &amp; Glow</label>
+                    <span id="sizeLabel" class="text-gray-400 font-mono">2.5px</span>
+                </div>
+                <input id="sizeInput" type="range" min="1.0" max="6.0" step="0.5" value="2.5" class="w-full">
+            </div>
+
+            <!-- Toggles -->
+            <div class="pt-2 border-t border-white/10 space-y-2">
+                <label class="flex items-center justify-between cursor-pointer">
+                    <span class="text-gray-300">Glow Bloom Effect</span>
+                    <input id="glowToggle" type="checkbox" checked class="w-4 h-4 rounded bg-black/50 accent-cyan-500">
+                </label>
+                <label class="flex items-center justify-between cursor-pointer">
+                    <span class="text-gray-300">Auto Motion Flow</span>
+                    <input id="flowToggle" type="checkbox" checked class="w-4 h-4 rounded bg-black/50 accent-cyan-500">
+                </label>
+            </div>
+
+            <!-- Actions -->
+            <div class="pt-3 flex gap-2">
+                <button id="resetParticlesBtn" class="w-full py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition font-medium">Reset Field</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Engine Script -->
+    <script>
+        /**
+         * AMOLED Particle Test Visualizer & Benchmark Engine
+         */
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha background context for performance & pure black
+
+        // UI Element References
+        const startOverlay = document.getElementById('startOverlay');
+        const controlPanel = document.getElementById('controlPanel');
+        const togglePanelBtn = document.getElementById('togglePanelBtn');
+        const fullscreenToggleBtn = document.getElementById('fullscreenToggleBtn');
+        const fpsVal = document.getElementById('fpsVal');
+        const countVal = document.getElementById('countVal');
+        const particleCountInput = document.getElementById('particleCountInput');
+        const particleCountLabel = document.getElementById('particleCountLabel');
+        const tailLengthInput = document.getElementById('tailLengthInput');
+        const tailLengthLabel = document.getElementById('tailLengthLabel');
+        const speedInput = document.getElementById('speedInput');
+        const speedLabel = document.getElementById('speedLabel');
+        const sizeInput = document.getElementById('sizeInput');
+        const sizeLabel = document.getElementById('sizeLabel');
+        const colorModeSelect = document.getElementById('colorModeSelect');
+        const glowToggle = document.getElementById('glowToggle');
+        const flowToggle = document.getElementById('flowToggle');
+        const modeButtons = document.querySelectorAll('.mode-btn');
+
+        // State & Settings
+        let width = 0;
+        let height = 0;
+        let particles = [];
+        let numParticles = parseInt(particleCountInput.value);
+        let fadeAlpha = parseFloat(tailLengthInput.value);
+        let speedMultiplier = parseFloat(speedInput.value);
+        let baseParticleSize = parseFloat(sizeInput.value);
+        let interactionMode = 'attract'; // attract, repel, vortex, explode
+        let colorMode = 'spectrum';
+        let enableGlow = true;
+        let enableAutoFlow = true;
+
+        // Pointer State
+        const mouse = {
+            x: -1000,
+            y: -1000,
+            active: false,
+            radius: 250,
+            down: false
+        };
+
+        // FPS Performance Monitoring
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        let globalHue = 0;
+
+        // Resize Canvas cleanly
+        function resize() {
+            width = canvas.width = window.innerWidth * window.devicePixelRatio || window.innerWidth;
+            height = canvas.height = window.innerHeight * window.devicePixelRatio || window.innerHeight;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        /**
+         * Particle Class definition
+         */
+        class Particle {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(initial = false) {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.vy = (Math.random() - 0.5) * 1.5;
+                this.baseSize = Math.random() * 1.5 + 1.0;
+                this.hueOffset = Math.random() * 360;
+                this.sat = 90 + Math.random() * 10;
+                this.light = 50 + Math.random() * 30;
+                this.friction = 0.96;
+            }
+
+            getColor() {
+                switch (colorMode) {
+                    case 'cyberpunk':
+                        return Math.random() > 0.5 
+                            ? `hsl(${180 + Math.random() * 20}, 100%, ${this.light}%)` // Neon Cyan
+                            : `hsl(${320 + Math.random() * 30}, 100%, ${this.light}%)`; // Neon Magenta
+                    case 'fire':
+                        return `hsl(${10 + Math.random() * 45}, 100%, ${this.light}%)`; // Orange / Fire Red
+                    case 'deepspace':
+                        return `hsl(${220 + Math.random() * 60}, 90%, ${this.light + 10}%)`; // Blue/Violet
+                    case 'matrix':
+                        return `hsl(${110 + Math.random() * 30}, 100%, ${this.light}%)`; // Green Matrix
+                    case 'spectrum':
+                    default:
+                        return `hsl(${(globalHue + this.hueOffset) % 360}, ${this.sat}%, ${this.light}%)`;
+                }
+            }
+
+            update() {
+                // Apply background drift / subtle wave if auto flow is active
+                if (enableAutoFlow) {
+                    const angle = (Math.sin(this.x * 0.002) + Math.cos(this.y * 0.002)) * Math.PI;
+                    this.vx += Math.cos(angle) * 0.05 * speedMultiplier;
+                    this.vy += Math.sin(angle) * 0.05 * speedMultiplier;
+                }
+
+                // Interactive Forces based on Mouse / Touch Pointer
+                if (mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const distSq = dx * dx + dy * dy;
+                    const maxDist = mouse.radius * (window.devicePixelRatio || 1);
+                    const maxDistSq = maxDist * maxDist;
+
+                    if (distSq < maxDistSq && distSq > 0) {
+                        const dist = Math.sqrt(distSq);
+                        const force = (1 - dist / maxDist);
+                        const forcePower = force * force * 1.2 * speedMultiplier;
+
+                        if (interactionMode === 'attract') {
+                            this.vx += (dx / dist) * forcePower;
+                            this.vy += (dy / dist) * forcePower;
+                        } else if (interactionMode === 'repel') {
+                            this.vx -= (dx / dist) * forcePower * 1.8;
+                            this.vy -= (dy / dist) * forcePower * 1.8;
+                        } else if (interactionMode === 'vortex') {
+                            // Tangential force for swirl effect
+                            this.vx += (-dy / dist) * forcePower * 1.5 + (dx / dist) * forcePower * 0.3;
+                            this.vy += (dx / dist) * forcePower * 1.5 + (dy / dist) * forcePower * 0.3;
+                        } else if (interactionMode === 'explode' && mouse.down) {
+                            this.vx -= (dx / dist) * forcePower * 5;
+                            this.vy -= (dy / dist) * forcePower * 5;
+                        }
+                    }
+                }
+
+                // Velocity Dampening & Speed Scaling
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx * speedMultiplier;
+                this.y += this.vy * speedMultiplier;
+
+                // Screen Boundary Wrap Around
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                const currentSize = this.baseSize * baseParticleSize;
+                ctx.fillStyle = this.getColor();
+
+                if (enableGlow && currentSize > 2) {
+                    ctx.shadowBlur = currentSize * 3;
+                    ctx.shadowColor = ctx.fillStyle;
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize Particle Pool
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+            countVal.textContent = numParticles;
+        }
+
+        initParticles();
+
+        /**
+         * Main Render Loop
+         */
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            // FPS Calculation
+            frameCount++;
+            if (currentTime - lastFrameTime >= 500) {
+                fps = Math.round((frameCount * 1000) / (currentTime - lastFrameTime));
+                fpsVal.textContent = fps;
+                frameCount = 0;
+                lastFrameTime = currentTime;
+            }
+
+            // Global Hue Cycle for smooth RGB transitions
+            globalHue = (globalHue + 0.4) % 360;
+
+            // AMOLED Motion Trail Effect (Fading canvas with ultra-low transparency overlay)
+            // Pure Black background guarantees OLED pixels switch off cleanly
+            ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+            ctx.shadowBlur = 0;
+            ctx.fillRect(0, 0, width, height);
+
+            // Update & Render Particles
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+            }
+        }
+
+        /**
+         * User Event Listeners & Pointer Interactions
+         */
+        function updatePointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            if (e.touches && e.touches.length > 0) {
+                mouse.x = (e.touches[0].clientX - rect.left) * scaleX;
+                mouse.y = (e.touches[0].clientY - rect.top) * scaleY;
+                mouse.active = true;
+            } else {
+                mouse.x = (e.clientX - rect.left) * scaleX;
+                mouse.y = (e.clientY - rect.top) * scaleY;
+                mouse.active = true;
+            }
+        }
+
+        window.addEventListener('mousemove', updatePointerPos);
+        window.addEventListener('touchstart', (e) => {
+            updatePointerPos(e);
+            mouse.down = true;
+        });
+        window.addEventListener('touchmove', updatePointerPos);
+        window.addEventListener('touchend', () => {
+            mouse.active = false;
+            mouse.down = false;
+        });
+        window.addEventListener('mouseleave', () => {
+            mouse.active = false;
+            mouse.down = false;
+        });
+        window.addEventListener('mousedown', () => { mouse.down = true; });
+        window.addEventListener('mouseup', () => { mouse.down = false; });
+
+        // Trigger Fullscreen Mode smoothly
+        function triggerFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.warn(`Fullscreen error: ${err.message}`);
+                });
+            }
+        }
+
+        // Handle Start Overlay Click
+        startOverlay.addEventListener('click', () => {
+            triggerFullscreen();
+            startOverlay.classList.add('opacity-0');
+            setTimeout(() => {
+                startOverlay.style.display = 'none';
+            }, 500);
+        });
+
+        // UI Controls Interaction Handlers
+        togglePanelBtn.addEventListener('click', () => {
+            controlPanel.classList.toggle('scale-0');
+            controlPanel.classList.toggle('opacity-0');
+            controlPanel.classList.toggle('pointer-events-none');
+        });
+
+        fullscreenToggleBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                triggerFullscreen();
+            }
+        });
+
+        particleCountInput.addEventListener('input', (e) => {
+            numParticles = parseInt(e.target.value);
+            particleCountLabel.textContent = numParticles;
+            initParticles();
+        });
+
+        tailLengthInput.addEventListener('input', (e) => {
+            fadeAlpha = parseFloat(e.target.value);
+            let valStr = "Medium";
+            if (fadeAlpha < 0.08) valStr = "Extra Long";
+            else if (fadeAlpha < 0.15) valStr = "Long";
+            else if (fadeAlpha > 0.22) valStr = "Short";
+            tailLengthLabel.textContent = valStr;
+        });
+
+        speedInput.addEventListener('input', (e) => {
+            speedMultiplier = parseFloat(e.target.value);
+            speedLabel.textContent = `${speedMultiplier.toFixed(1)}x`;
+        });
+
+        sizeInput.addEventListener('input', (e) => {
+            baseParticleSize = parseFloat(e.target.value);
+            sizeLabel.textContent = `${baseParticleSize.toFixed(1)}px`;
+        });
+
+        colorModeSelect.addEventListener('change', (e) => {
+            colorMode = e.target.value;
+        });
+
+        glowToggle.addEventListener('change', (e) => {
+            enableGlow = e.target.checked;
+        });
+
+        flowToggle.addEventListener('change', (e) => {
+            enableAutoFlow = e.target.checked;
+        });
+
+        modeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeButtons.forEach(b => {
+                    b.classList.remove('bg-white', 'text-black', 'font-semibold');
+                    b.classList.add('bg-white/10', 'text-white', 'font-medium');
+                });
+                btn.classList.remove('bg-white/10', 'text-white', 'font-medium');
+                btn.classList.add('bg-white', 'text-black', 'font-semibold');
+                interactionMode = btn.getAttribute('data-mode');
+            });
+        });
+
+        document.getElementById('resetParticlesBtn').addEventListener('click', () => {
+            initParticles();
+        });
+
+        // Start animation frame loop once loaded
+        window.onload = function() {
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
